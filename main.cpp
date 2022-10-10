@@ -5,8 +5,7 @@
 /* *** */
 #include "base.c"
 
-int main(){
-
+void debug_1(){
     char * load_path = (char *)malloc(10);
     load_path[0]='L';
     load_path[1]='O';
@@ -32,6 +31,11 @@ int main(){
     store_path[9]='\0';
 
     store_file(store_path,load_file(load_path));
+}
 
+void debug_2(){}
+void debug_3(){}
+
+int main(){
     return 0;
 }

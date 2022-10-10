@@ -19,3 +19,9 @@ void store_file(char * file_path, file_memory file_memory){
     fwrite((void *)((char *)file_memory.file+file_memory.size/IO_UNIT_SIZE*IO_UNIT_SIZE),1,file_memory.size%IO_UNIT_SIZE,file_pointer);
     fclose(file_pointer);
 }
+
+void add_bit_pointer(bit_pointer * bit, int number){
+    bit->bit_index+=number;
+    bit->character_pointer+=(bit->bit_index/BIT_OF_BYTE_AMOUNT);
+    bit->bit_index%=BIT_OF_BYTE_AMOUNT;
+}
