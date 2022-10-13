@@ -16,4 +16,10 @@ typedef struct compress_node{
 long compress_unit[COMPRESS_UNIT_CATEGORY];
 compress_node compress_tree[COMPRESS_TREE_SIZE];
 
+bit_pointer compress_file;
+long compress_bit_amount;
+
+void process_compress(file_memory * file_memory_pointer);
+void process_reverse_compress(file_memory * file_memory_pointer);
+
 #endif

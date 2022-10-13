@@ -17,9 +17,10 @@ typedef struct bit_pointer{
     int bit_index;
 } bit_pointer;
 
-file_memory load_file(char * file_path);
-void store_file(char * file_path, file_memory file_memory);
+file_memory * load_file(char * file_path);
+void store_file(char * file_path, file_memory * file_memory_pointer);
 
-void add_bit_pointer(bit_pointer * bit, int number);
+void update_bit(bit_pointer * bit_pointer_pointer, unsigned char storage, int amount);
+int fetch_bit(bit_pointer * bit_pointer_pointer);
 
 #endif

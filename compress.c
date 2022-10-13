@@ -1,12 +1,11 @@
 #include "compress.h"
 
-void create_compress_unit_compress(unsigned char * byte, long amount){
+void create_compress_unit_compress(const unsigned char * byte, long amount){
     for(int i=0; i<COMPRESS_UNIT_CATEGORY; i++){
         compress_unit[i] = 0;
     }
     for(int i=0; i<amount; i++){
-        compress_unit[*byte]++;
-        byte++;
+        compress_unit[byte[i]]++;
     }
 }
 
@@ -49,9 +48,56 @@ void create_compress_tree_compress(){
     }
 }
 
-void process_compress(file_memory file_memory){
-    create_compress_unit_compress(file_memory.file,file_memory.size);
-    create_compress_tree_compress();
+void transform_compress(int compress_node_index){
+    if(compress_tree[compress_node_index].parent==-1){
+        return;
+    }
+    transform_compress(compress_tree[compress_node_index].parent);
+    update_bit(&compress_file,compress_tree[compress_node_index].parent_sign,1);
+    compress_bit_amount++;
 }
 
-void process_reverse_compress(){}
+void process_compress(file_memory * file_memory_pointer){
+    create_compress_unit_compress((const unsigned char *)file_memory_pointer->file,file_memory_pointer->size);
+    create_compress_tree_compress();
+    void * file = (void *)malloc(sizeof(compress_tree)+sizeof(long)+file_memory_pointer->size);
+    compress_file.character_pointer = ((unsigned char *)file)+sizeof(compress_tree)+sizeof(long);
+    compress_file.bit_index = 0;
+    for(int i=0; i<file_memory_pointer->size; i++){
+        compress_file.character_pointer[i] = 0;
+    }
+    compress_bit_amount = 0;
+    for(int i=0; i<file_memory_pointer->size; i++){
+        transform_compress(((unsigned char *)(file_memory_pointer->file))[i]);
+    }
+    free(file_memory_pointer->file);
+    for(int i=0; i<COMPRESS_TREE_SIZE; i++){
+        ((compress_node *)file)[i] = compress_tree[i];
+    }
+    *((long *)(((compress_node *)file)+COMPRESS_TREE_SIZE)) = file_memory_pointer->size;
+    file_memory_pointer->file = file;
+    file_memory_pointer->size = compress_bit_amount/8+(compress_bit_amount%8!=0);
+}
+
+void process_reverse_compress(file_memory * file_memory_pointer){
+    for(int i=0; i<COMPRESS_TREE_SIZE; i++){
+        compress_tree[i] = ((compress_node *)(file_memory_pointer->file))[i];
+    }
+    file_memory_pointer->size = *((long *)(((compress_node *)(file_memory_pointer->file))+COMPRESS_TREE_SIZE));
+    compress_file.character_pointer = ((unsigned char *)(file_memory_pointer->file))+sizeof(compress_tree)+sizeof(long);
+    compress_file.bit_index = 0;
+    void * file = (void *)malloc(file_memory_pointer->size);
+    for(int i=0; i<file_memory_pointer->size; i++){
+        int compress_node_index = COMPRESS_TREE_SIZE-1;
+        while(compress_tree[compress_node_index].child_0!=-1){
+            if(fetch_bit(&compress_file)){
+                compress_node_index = compress_tree[compress_node_index].child_1;
+            }else{
+                compress_node_index = compress_tree[compress_node_index].child_0;
+            }
+        }
+        ((unsigned char *)file)[i] = compress_node_index;
+    }
+    free(file_memory_pointer->file);
+    file_memory_pointer->file = file;
+}
