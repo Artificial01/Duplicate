@@ -3,12 +3,9 @@
 
 #include "base.h"
 
-#define MERGE_PATH_SIZE 256
-#define MERGE_STACK_SIZE 32
-
 typedef struct merge_message{
     int type;
-    char path[MERGE_PATH_SIZE];
+    char path[PATH_SIZE];
     long size;
 } merge_message;
 
@@ -20,42 +17,21 @@ typedef struct merge_node{
 
 merge_node * merge_current_node_pointer;
 
-char merge_path[MERGE_PATH_SIZE];
-int merge_stack[MERGE_STACK_SIZE];
-int merge_stack_index;
-
-void push_merge(char * file_name){
-    merge_stack_index++;
-    merge_stack[merge_stack_index] = merge_stack[merge_stack_index-1];
-    if(merge_stack_index>1){
-        merge_path[merge_stack[merge_stack_index]] = '/';
-        merge_stack[merge_stack_index]++;
+void free_merge(merge_node * pointer){
+    if(pointer==NULL){
+        return;
     }
-    while(*file_name!='\0'){
-        merge_path[merge_stack[merge_stack_index]] = *file_name;
-        merge_stack[merge_stack_index]++;
-        file_name++;
-    }
-    merge_path[merge_stack[merge_stack_index]] = '\0';
-}
-
-void pop_merge(){
-    merge_stack_index--;
-    merge_path[merge_stack[merge_stack_index]] = '\0';
-}
-
-int identify_merge(){
-    struct stat buffer = {};
-    stat(merge_path,&buffer);
-    return (buffer.st_mode&(unsigned short)S_IFDIR)!=0;
+    free_merge(pointer->next);
+    free_file_memory(pointer->file_memory_pointer);
+    free(pointer);
 }
 
 void file_merge(){
-    file_memory * file_memory_pointer = load_file(merge_path);
+    file_memory * file_memory_pointer = load_file(folder_path);
     merge_node * merge_node_pointer = (merge_node *)malloc(sizeof(merge_node));
     merge_node_pointer->merge_message.type = FILE_TYPE;
-    for(int i=0; i<=merge_stack[merge_stack_index]; i++){
-        merge_node_pointer->merge_message.path[i] = merge_path[i];
+    for(int i=0; i<=folder_stack[folder_stack_index]; i++){
+        merge_node_pointer->merge_message.path[i] = folder_path[i];
     }
     merge_node_pointer->merge_message.size = (long)sizeof(merge_message)+file_memory_pointer->size;
     merge_node_pointer->file_memory_pointer = file_memory_pointer;
@@ -67,49 +43,33 @@ void file_merge(){
 void folder_merge(){
     merge_node * merge_node_pointer = (merge_node *)malloc(sizeof(merge_node));
     merge_node_pointer->merge_message.type = FOLDER_TYPE;
-    for(int i=0; i<=merge_stack[merge_stack_index]; i++){
-        merge_node_pointer->merge_message.path[i] = merge_path[i];
+    for(int i=0; i<=folder_stack[folder_stack_index]; i++){
+        merge_node_pointer->merge_message.path[i] = folder_path[i];
     }
     merge_node_pointer->merge_message.size = sizeof(merge_message);
     merge_node_pointer->file_memory_pointer = NULL;
     merge_node_pointer->next = NULL;
     merge_current_node_pointer->next = merge_node_pointer;
     merge_current_node_pointer = merge_node_pointer;
-    DIR * folder_pointer = opendir(merge_path);
+    DIR * folder_pointer = opendir(folder_path);
     for(struct dirent * folder_entry_pointer=readdir(folder_pointer); folder_entry_pointer; folder_entry_pointer=readdir(folder_pointer)){
         if(strcmp(folder_entry_pointer->d_name,".")!=0 && strcmp(folder_entry_pointer->d_name,"..")!=0){
-            push_merge(folder_entry_pointer->d_name);
-            if(identify_merge()){
+            enter_folder(folder_entry_pointer->d_name);
+            if(identify_folder(folder_path)){
                 folder_merge();
             }else{
                 file_merge();
             }
-            pop_merge();
+            exit_folder();
         }
     }
 }
 
-void free_merge(merge_node * pointer){
-    if(pointer==NULL){
-        return;
-    }
-    free_merge(pointer->next);
-    free_file_memory(pointer->file_memory_pointer);
-    free(pointer);
-}
-
-file_memory * process_merge(char * file_path){
+void process_merge(char * path){
     merge_node merge_node = {{},NULL,NULL};
     merge_current_node_pointer = &merge_node;
-    merge_path[0] = '\0';
-    merge_stack[0] = 0;
-    merge_stack_index = 0;
-    push_merge(file_path);
-    if(identify_merge()){
-        folder_merge();
-    }else{
-        file_merge();
-    }
+    init_folder(path);
+    folder_merge();
     file_memory * file_memory_pointer = (file_memory *)malloc(sizeof(file_memory));
     file_memory_pointer->size = 0;
     for(merge_current_node_pointer=merge_node.next; merge_current_node_pointer; merge_current_node_pointer=merge_current_node_pointer->next){
@@ -131,12 +91,16 @@ file_memory * process_merge(char * file_path){
     free_merge(merge_node.next);
     merge_message merge_last_message = {NO_TYPE};
     *((merge_message *)pointer) = merge_last_message;
-    return file_memory_pointer;
+    delete_path(path);
+    store_file(path,file_memory_pointer);
+    free_file_memory(file_memory_pointer);
 }
 
-void process_reverse_merge(file_memory * file_memory_pointer){
+void process_reverse_merge(char * path){
+    file_memory * file_memory_pointer = load_file(path);
     byte * pointer = (byte *)(file_memory_pointer->file);
     merge_message buffer;
+    delete_file(path);
     while(1){
         buffer = *((merge_message *)pointer);
         if(buffer.type==FOLDER_TYPE){
@@ -149,6 +113,7 @@ void process_reverse_merge(file_memory * file_memory_pointer){
         }
         pointer+=buffer.size;
     }
+    free_file_memory(file_memory_pointer);
 }
 
 #endif

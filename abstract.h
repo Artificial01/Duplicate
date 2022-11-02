@@ -3,8 +3,7 @@
 
 #include "base.h"
 
-#define ABSTRACT_SUFFIX ".MD5"
-#define ABSTRACT_SUFFIX_SIZE 5
+#define ABSTRACT_ERROR_PATH_SIZE 4096
 
 #define LEFT_ROTATE_32_ABSTRACT(number_1,number_2) ((number_1<<number_2)|(number_1>>(32-number_2)))
 
@@ -44,6 +43,9 @@ bit_32 abstract_t[64] = {0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,
                          0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,
                          0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,
                          0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391};
+
+char abstract_error_path[ABSTRACT_ERROR_PATH_SIZE];
+int abstract_error_path_index;
 
 void F_abstract(bit_32 * a_pointer, bit_32 b, bit_32 c, bit_32 d, bit_32 data, bit_32 s, bit_32 t){
     *a_pointer = b+LEFT_ROTATE_32_ABSTRACT((*a_pointer+F_ABSTRACT(b,c,d)+data+t),s);
@@ -105,78 +107,123 @@ void core_abstract(){
     abstract_digest[3]+=abstract_d;
 }
 
-void MD5_abstract(file_memory * file_memory_pointer){
+void MD5_abstract(void * file, long size){
     abstract_digest[0] = 0x67452301;
     abstract_digest[1] = 0xEFCDAB89;
     abstract_digest[2] = 0x98BADCFE;
     abstract_digest[3] = 0x10325476;
-    for(int i=0; i<file_memory_pointer->size/64; i++){
+    for(int i=0; i<size/64; i++){
         for(int j=0; j<16; j++){
-            abstract_data[j] = ((bit_32 *)file_memory_pointer->file)[16*i+j];
+            abstract_data[j] = ((bit_32 *)file)[16*i+j];
         }
         core_abstract();
     }
-    for(int i=0; i<file_memory_pointer->size%64; i++){
-        ((byte *)abstract_data)[i] = *(((byte *)file_memory_pointer->file)+file_memory_pointer->size/64*64+i);
+    for(int i=0; i<size%64; i++){
+        ((byte *)abstract_data)[i] = *(((byte *)file)+size/64*64+i);
     }
-    if(file_memory_pointer->size%64>56){
-        for(int i=file_memory_pointer->size%64; i<64; i++){
+    if(size%64>56){
+        for(int i=size%64; i<64; i++){
             ((byte *)abstract_data)[i] = 0;
         }
         core_abstract();
         for(int i=0; i<56; i++){
             ((byte *)abstract_data)[i] = 0;
         }
-        *((bit_64 *)(((byte *)abstract_data)+56)) = file_memory_pointer->size*BIT_AMOUNT;
+        *((bit_64 *)(((byte *)abstract_data)+56)) = size*BIT_AMOUNT;
         core_abstract();
     }else{
-        for(int i=file_memory_pointer->size%64; i<56; i++){
+        for(int i=size%64; i<56; i++){
             ((byte *)abstract_data)[i] = 0;
         }
-        *((bit_64 *)(((byte *)abstract_data)+56)) = file_memory_pointer->size*BIT_AMOUNT;
+        *((bit_64 *)(((byte *)abstract_data)+56)) = size*BIT_AMOUNT;
         core_abstract();
     }
 }
 
-char * suffix_abstract(const char * file_path){
-    int length = 0;
-    while(file_path[length]!='\0'){
-        length++;
+void concatenate_abstract(char * path){
+    abstract_error_path[abstract_error_path_index] = '|';
+    abstract_error_path_index++;
+    while(*path!='\0'){
+        abstract_error_path[abstract_error_path_index] = *path;
+        abstract_error_path_index++;
+        path++;
     }
-    char * path = (char *)malloc(length+ABSTRACT_SUFFIX_SIZE);
-    for(int i=0; i<length; i++){
-        path[i] = file_path[i];
-    }
-    for(int i=0; i<ABSTRACT_SUFFIX_SIZE; i++){
-        path[length+i] = ABSTRACT_SUFFIX[i];
-    }
-    return path;
+    abstract_error_path[abstract_error_path_index] = '\0';
 }
 
-void process_abstract(char * file_path,file_memory * file_memory_pointer){
-    MD5_abstract(file_memory_pointer);
-    file_memory temporary_file_memory = {abstract_digest,sizeof(abstract_digest)};
-    char * path = suffix_abstract(file_path);
-    store_file(path,&temporary_file_memory);
-    free(path);
+void file_abstract(){
+    file_memory * file_memory_pointer = load_file(folder_path);
+    MD5_abstract(file_memory_pointer->file,file_memory_pointer->size);
+    free_file_memory(file_memory_pointer);
+    FILE * file_pointer = fopen(folder_path,"ab");
+    fwrite(abstract_digest,4,4,file_pointer);
+    fclose(file_pointer);
 }
 
-int process_reverse_abstract(char * file_path){
-    char * path = suffix_abstract(file_path);
-    file_memory * temporary_file_memory_pointer = load_file(path);
-    free(path);
-    file_memory * file_memory_pointer = load_file(file_path);
-    MD5_abstract(file_memory_pointer);
-    for(int i=0; i<4; i++){
-        if(((bit_32 *)temporary_file_memory_pointer->file)[i]!=abstract_digest[i]){
-            free_file_memory(file_memory_pointer);
-            free_file_memory(temporary_file_memory_pointer);
-            return ABSTRACT_ERROR;
+void folder_abstract(){
+    DIR * folder_pointer = opendir(folder_path);
+    for(struct dirent * folder_entry_pointer=readdir(folder_pointer); folder_entry_pointer; folder_entry_pointer=readdir(folder_pointer)){
+        if(strcmp(folder_entry_pointer->d_name,".")!=0 && strcmp(folder_entry_pointer->d_name,"..")!=0){
+            enter_folder(folder_entry_pointer->d_name);
+            if(identify_folder(folder_path)){
+                folder_abstract();
+            }else{
+                file_abstract();
+            }
+            exit_folder();
         }
     }
+}
+
+void process_abstract(char * path){
+    init_folder(path);
+    if(identify_folder(path)){
+        folder_abstract();
+    }else{
+        file_abstract();
+    }
+}
+
+void file_reverse_abstract(){
+    file_memory * file_memory_pointer = load_file(folder_path);
+    file_memory_pointer->size-=16;
+    MD5_abstract(file_memory_pointer->file,file_memory_pointer->size);
+    for(int i=0; i<4; i++){
+        if(((bit_32 *)(((byte *)file_memory_pointer->file)+file_memory_pointer->size))[i]!=abstract_digest[i]){
+            concatenate_abstract(folder_path);
+            free_file_memory(file_memory_pointer);
+            return;
+        }
+    }
+    store_file(folder_path,file_memory_pointer);
     free_file_memory(file_memory_pointer);
-    free_file_memory(temporary_file_memory_pointer);
-    return NO_ERROR;
+}
+
+void folder_reverse_abstract(){
+    DIR * folder_pointer = opendir(folder_path);
+    for(struct dirent * folder_entry_pointer=readdir(folder_pointer); folder_entry_pointer; folder_entry_pointer=readdir(folder_pointer)){
+        if(strcmp(folder_entry_pointer->d_name,".")!=0 && strcmp(folder_entry_pointer->d_name,"..")!=0){
+            enter_folder(folder_entry_pointer->d_name);
+            if(identify_folder(folder_path)){
+                folder_reverse_abstract();
+            }else{
+                file_reverse_abstract();
+            }
+            exit_folder();
+        }
+    }
+}
+
+char * process_reverse_abstract(char * path){
+    init_folder(path);
+    abstract_error_path[0] = '\0';
+    abstract_error_path_index = 0;
+    if(identify_folder(path)){
+        folder_reverse_abstract();
+    }else{
+        file_reverse_abstract();
+    }
+    return abstract_error_path;
 }
 
 #endif

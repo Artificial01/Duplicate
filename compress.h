@@ -72,7 +72,8 @@ void transform_compress(int compress_node_index){
     compress_bit_amount++;
 }
 
-void process_compress(file_memory * file_memory_pointer){
+void file_compress(){
+    file_memory * file_memory_pointer = load_file(folder_path);
     prepare_compress((const byte *)file_memory_pointer->file,file_memory_pointer->size);
     void * file = (void *)malloc(sizeof(compress_tree)+sizeof(long)+file_memory_pointer->size);
     compress_file.byte_pointer = ((byte *)file)+sizeof(compress_tree)+sizeof(long);
@@ -91,9 +92,36 @@ void process_compress(file_memory * file_memory_pointer){
     *((long *)(((compress_node *)file)+COMPRESS_TREE_SIZE)) = file_memory_pointer->size;
     file_memory_pointer->file = file;
     file_memory_pointer->size = (long)sizeof(compress_tree)+(long)sizeof(long)+compress_bit_amount/BIT_AMOUNT+(compress_bit_amount%BIT_AMOUNT!=0);
+    store_file(folder_path,file_memory_pointer);
+    free_file_memory(file_memory_pointer);
 }
 
-void process_reverse_compress(file_memory * file_memory_pointer){
+void folder_compress(){
+    DIR * folder_pointer = opendir(folder_path);
+    for(struct dirent * folder_entry_pointer=readdir(folder_pointer); folder_entry_pointer; folder_entry_pointer=readdir(folder_pointer)){
+        if(strcmp(folder_entry_pointer->d_name,".")!=0 && strcmp(folder_entry_pointer->d_name,"..")!=0){
+            enter_folder(folder_entry_pointer->d_name);
+            if(identify_folder(folder_path)){
+                folder_compress();
+            }else{
+                file_compress();
+            }
+            exit_folder();
+        }
+    }
+}
+
+void process_compress(char * path){
+    init_folder(path);
+    if(identify_folder(path)){
+        folder_compress();
+    }else{
+        file_compress();
+    }
+}
+
+void file_reverse_compress(){
+    file_memory * file_memory_pointer = load_file(folder_path);
     for(int i=0; i<COMPRESS_TREE_SIZE; i++){
         compress_tree[i] = ((compress_node *)(file_memory_pointer->file))[i];
     }
@@ -110,6 +138,32 @@ void process_reverse_compress(file_memory * file_memory_pointer){
     }
     free(file_memory_pointer->file);
     file_memory_pointer->file = file;
+    store_file(folder_path,file_memory_pointer);
+    free_file_memory(file_memory_pointer);
+}
+
+void folder_reverse_compress(){
+    DIR * folder_pointer = opendir(folder_path);
+    for(struct dirent * folder_entry_pointer=readdir(folder_pointer); folder_entry_pointer; folder_entry_pointer=readdir(folder_pointer)){
+        if(strcmp(folder_entry_pointer->d_name,".")!=0 && strcmp(folder_entry_pointer->d_name,"..")!=0){
+            enter_folder(folder_entry_pointer->d_name);
+            if(identify_folder(folder_path)){
+                folder_reverse_compress();
+            }else{
+                file_reverse_compress();
+            }
+            exit_folder();
+        }
+    }
+}
+
+void process_reverse_compress(char * path){
+    init_folder(path);
+    if(identify_folder(path)){
+        folder_reverse_compress();
+    }else{
+        file_reverse_compress();
+    }
 }
 
 #endif
